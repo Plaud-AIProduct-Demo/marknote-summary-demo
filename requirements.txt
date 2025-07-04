@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+langchain
+langchain-community
+boto3
+pytest
+python-multipart
+pymysql
