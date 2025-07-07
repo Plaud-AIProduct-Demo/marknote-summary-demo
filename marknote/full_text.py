@@ -6,8 +6,10 @@ from marknote.config import get_llm_config
 from typing import List
 from marknote.prompt_template import SEGMENT_SUMMARY_PROMPT, MERGE_MARKNOTE_PROMPT, FINAL_MARKNOTE_PROMPT
 import concurrent.futures
+import tiktoken
 
 router = APIRouter()
+TIKTOKEN_MODEL = "gpt-4o"
 
 class MarkNoteItem(BaseModel):
     start_time: int = Field(..., description="开始时间")
@@ -44,67 +46,67 @@ def mark_note_full_text(request: FullTextRequest):
                 start, end = map(int, time_text.split('-'))
             except ValueError:
                 continue
-            text_content = line[speaker_end+1:].strip()
             summary_objects.append({
                 "start_time": start,
                 "end_time": end,
-                "summary": text_content
+                "summary": line
             })
-        # 新增：对 summary_objects 和 mark_notes 按 start_time 排序
         summary_objects.sort(key=lambda x: x["start_time"])
         sorted_mark_notes = sorted(request.mark_notes, key=lambda x: x.start_time)
-        # 双指针遍历，合并/分配 summary_objects 到新列表
+        # 合并所有与 mark_note 区间有重叠的 summary_object
         merged_list = []
-        i, j = 0, 0
-        n, m = len(summary_objects), len(sorted_mark_notes)
-        while i < n:
-            if j < m:
-                note = sorted_mark_notes[j]
-                so = summary_objects[i]
-                # 如果 summary_object 在 mark_note 区间内
-                if so["start_time"] >= note.start_time and so["end_time"] <= note.end_time:
-                    merge_start = i
-                    # 找到所有在当前 mark_note 区间内的 summary_object
-                    while i < n and summary_objects[i]["start_time"] >= note.start_time and summary_objects[i]["end_time"] <= note.end_time:
-                        i += 1
-                    merged_text = "\n".join([summary_objects[k]["summary"] for k in range(merge_start, i)])
-                    merged_list.append({
-                        "note": note,
-                        "merged_text": merged_text
-                    })
-                    j += 1
-                else:
-                    # 不在 mark_note 区间内，直接放入新列表
-                    merged_list.append({
-                        "note": None,
-                        "merged_text": so["summary"]
-                    })
-                    i += 1
-            else:
-                # 没有更多 mark_note，剩下的 summary_object 直接放入新列表
+        used = [False] * len(summary_objects)
+        for note in sorted_mark_notes:
+            merged_texts = []
+            min_start, max_end = None, None
+            for idx, so in enumerate(summary_objects):
+                # 判断是否有重叠
+                if so["end_time"] >= note.start_time and so["start_time"] <= note.end_time:
+                    merged_texts.append(so["summary"])
+                    used[idx] = True
+                    # 计算区间并集
+                    if min_start is None or so["start_time"] < min_start:
+                        min_start = so["start_time"]
+                    if max_end is None or so["end_time"] > max_end:
+                        max_end = so["end_time"]
+            if merged_texts:
+                merged_list.append({
+                    "note": note.content,
+                    "merged_text": "\n".join(merged_texts),
+                    "start_time": min_start if min_start is not None else note.start_time,
+                    "end_time": max_end if max_end is not None else note.end_time
+                })
+        # 非 mark_note 区间的 summary_object 直接放入新列表
+        for idx, so in enumerate(summary_objects):
+            if not used[idx]:
                 merged_list.append({
                     "note": None,
-                    "merged_text": summary_objects[i]["summary"]
+                    "merged_text": so["summary"],
+                    "start_time": so["start_time"],
+                    "end_time": so["end_time"]
                 })
-                i += 1
+        # 保持顺序（按 start_time 排序）
+        merged_list.sort(key=lambda x: x["start_time"] if x.get("start_time") is not None else 0)
+        logging.info(f"Received {len(lines)} lines of full text for processing.")
+        merged_list = merge_segments_by_token_count(merged_list)
+        logging.info(f"Processed {len(merged_list)} merged segments from full text.")
         # 4. 多线程并发对合并后的内容执行 summary（仅对有 note 的项）
         marknote_results = []
         def summarize_merged(item):
             if item["note"] is not None:
                 # LLM summary for merged + marknote content
-                replaced_prompt = MERGE_MARKNOTE_PROMPT.replace("{{meeting_summaries}}", item["merged_text"]).replace("{{key_note}}", item["note"].content)
+                replaced_prompt = MERGE_MARKNOTE_PROMPT.replace("{{meeting_summaries}}", item["merged_text"]).replace("{{key_note}}", item["note"])
                 merged_summary = call_llm_api(replaced_prompt, None, model, api_key, api_url)
                 return {
-                    "start_time": item["note"].start_time,
-                    "end_time": item["note"].end_time,
                     "summary": merged_summary
                 }
             else:
-                # 非 mark_note 区间，直接返回原文
+                replaced_prompt = SEGMENT_SUMMARY_PROMPT.replace("{{meeting_summaries}}", item["merged_text"])
+                merged_summary = call_llm_api(replaced_prompt, None, model, api_key, api_url)
                 return {
                     "start_time": None,
                     "end_time": None,
-                    "summary": item["merged_text"]
+                    "summary": merged_summary
                 }
         with concurrent.futures.ThreadPoolExecutor() as executor:
             marknote_results = list(executor.map(summarize_merged, merged_list))
@@ -130,3 +132,44 @@ def mark_note_full_text(request: FullTextRequest):
     except Exception as e:
         logging.error(f"Full text summary failed: {str(e)}")
         return {"error": f"Full text summary failed: {str(e)}"}
+
+def merge_segments_by_token_count(merged_list, max_tokens=5000):
+    """
+    遍历 merged_list，累计 token 数，直到超过 max_tokens 时，将当前累计的片段合并为一个新片段。
+    合并后 note 设为所有被合并的 note 的字符串合并（用换行拼接），如无 note 则为 None。
+    merged_list 中的 item["note"] 已经是 string 或 None。
+    使用 tiktoken 统计 token 数。
+    """
+    encoding = tiktoken.encoding_for_model(TIKTOKEN_MODEL)
+    def count_tokens(text):
+        return len(encoding.encode(text))
+
+    result = []
+    buffer = []
+    notes = []
+    token_sum = 0
+    for item in merged_list:
+        tokens = count_tokens(item["merged_text"])
+        if token_sum + tokens > max_tokens and buffer:
+            note_str = "\n".join([n for n in notes if n]) if notes else None
+            result.append({
+                "note": note_str,
+                "merged_text": "\n".join(buffer)
+            })
+            buffer = []
+            notes = []
+            token_sum = 0
+        buffer.append(item["merged_text"])
+        if item["note"]:
+            if isinstance(item["note"], list):
+                notes.extend([n for n in item["note"] if n])
+            else:
+                notes.append(item["note"])
+        token_sum += tokens
+    if buffer:
+        note_str = "\n".join([n for n in notes if n]) if notes else None
+        result.append({
+            "note": note_str,
+            "merged_text": "\n".join(buffer)
+        })
+    return result

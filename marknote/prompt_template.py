@@ -92,7 +92,7 @@ MEETING_SUMMARY_PROMPT_V3 = (
 )
 
 SEGMENT_SUMMARY_PROMPT = (
-    "Summarize the following meeting segment in 1-2 sentences:\n{{segment}}"
+    "Summarize the following meeting segment in 1-2 sentences:\n{{meeting_summaries}}"
 )
 
 MERGE_MARKNOTE_PROMPT = (
