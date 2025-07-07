@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from marknote.mark_note import call_llm_api
 from marknote.config import get_llm_config
 from typing import List
-from marknote.prompt_template import SEGMENT_SUMMARY_PROMPT, MERGE_MARKNOTE_PROMPT, FINAL_MARKNOTE_PROMPT
+from marknote.prompt_template import SEGMENT_SUMMARY_PROMPT, MERGE_MARKNOTE_PROMPT, FINAL_MARKNOTE_PROMPT_V2
 import concurrent.futures
 import tiktoken
 
@@ -91,7 +91,7 @@ def mark_note_full_text(request: FullTextRequest):
         logging.info(f"Received {len(lines)} lines of full text for processing.")
         merged_list = merge_segments_by_token_count(merged_list)
         logging.info(f"Processed {len(merged_list)} merged segments from full text.")
-        # 4. 多线程并发对合并后的内容执行 summary（仅对有 note 的项）
+        # 4. 多线程并发对合并后的内容执行 summary
         marknote_results = []
         def summarize_merged(item):
             if item["note"] is not None:
@@ -113,7 +113,7 @@ def mark_note_full_text(request: FullTextRequest):
             marknote_results = list(executor.map(summarize_merged, merged_list))
         prompt = None
         if request.prompt is None:
-            prompt = FINAL_MARKNOTE_PROMPT
+            prompt = FINAL_MARKNOTE_PROMPT_V2
         else:
             prompt = request.prompt
         # 5. 汇总所有 marknote_results，要求 LLM 输出中必须包含每个 mark_note 的内容，并在对应内容后加标记
@@ -124,7 +124,8 @@ def mark_note_full_text(request: FullTextRequest):
             tag = f'[#{{ "type": "mark", "value": {{"start_time":{note.start_time}, "end_time":{note.end_time}, "note_id": "{note.note_id}"}}}}#]'
             mark_tags.append({"content": note.content, "tag": tag})
         mark_tags_str = "\n".join([f'- {item["content"]} {item["tag"]}' for item in mark_tags])
-        final_prompt = prompt.replace("{{section_summaries}}", all_summaries).replace("{{mark_tags}}", mark_tags_str)
+        logging.info(f"mark_tags_str: {mark_tags_str}")
+        final_prompt = prompt.replace("{{section_summaries}}", all_summaries).replace("{{mark_notes}}", mark_tags_str)
         final_summary = call_llm_api(final_prompt, None, model, api_key, api_url)
         return {
             "marknote_results": marknote_results,
