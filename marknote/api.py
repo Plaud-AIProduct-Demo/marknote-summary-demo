@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field
 from enum import Enum
 import requests
 from marknote.config import get_llm_config
-from typing import List
 from marknote.database.mysql_client import insert_mark_note_summary
 
 router = APIRouter()

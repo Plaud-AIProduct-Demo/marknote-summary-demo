@@ -45,39 +45,75 @@ def mark_note_full_text(request: FullTextRequest):
             except ValueError:
                 continue
             text_content = line[speaker_end+1:].strip()
-            # LLM summary for this segment
-            # prompt = SEGMENT_SUMMARY_PROMPT.replace("{{segment}}", text_content)
-            # segment_summary = call_llm_api(prompt, None, model, api_key, api_url)
             summary_objects.append({
                 "start_time": start,
                 "end_time": end,
                 "summary": text_content
             })
-        # 3. 遍历 mark_notes，合并 summary_object 区间内容，不执行summary
-        marknote_merge_inputs = []
-        for note in request.mark_notes:
-            merged_summaries = [obj["summary"] for obj in summary_objects if obj["start_time"] >= note.start_time and obj["end_time"] <= note.end_time]
-            merged_text = "\n".join(merged_summaries)
-            marknote_merge_inputs.append({
-                "note": note,
-                "merged_text": merged_text
-            })
+        # 新增：对 summary_objects 和 mark_notes 按 start_time 排序
+        summary_objects.sort(key=lambda x: x["start_time"])
+        sorted_mark_notes = sorted(request.mark_notes, key=lambda x: x.start_time)
+        # 双指针遍历，合并/分配 summary_objects 到新列表
+        merged_list = []
+        i, j = 0, 0
+        n, m = len(summary_objects), len(sorted_mark_notes)
+        while i < n:
+            if j < m:
+                note = sorted_mark_notes[j]
+                so = summary_objects[i]
+                # 如果 summary_object 在 mark_note 区间内
+                if so["start_time"] >= note.start_time and so["end_time"] <= note.end_time:
+                    merge_start = i
+                    # 找到所有在当前 mark_note 区间内的 summary_object
+                    while i < n and summary_objects[i]["start_time"] >= note.start_time and summary_objects[i]["end_time"] <= note.end_time:
+                        i += 1
+                    merged_text = "\n".join([summary_objects[k]["summary"] for k in range(merge_start, i)])
+                    merged_list.append({
+                        "note": note,
+                        "merged_text": merged_text
+                    })
+                    j += 1
+                else:
+                    # 不在 mark_note 区间内，直接放入新列表
+                    merged_list.append({
+                        "note": None,
+                        "merged_text": so["summary"]
+                    })
+                    i += 1
+            else:
+                # 没有更多 mark_note，剩下的 summary_object 直接放入新列表
+                merged_list.append({
+                    "note": None,
+                    "merged_text": summary_objects[i]["summary"]
+                })
+                i += 1
+        # prompt 选择逻辑保持不变
         prompt = None
         if request.prompt is None:
             prompt = MERGE_MARKNOTE_PROMPT
-        # 4. 多线程并发对合并后的内容执行 summary
+        else:
+            prompt = request.prompt
+        # 4. 多线程并发对合并后的内容执行 summary（仅对有 note 的项）
         marknote_results = []
         def summarize_merged(item):
-            # LLM summary for merged + marknote content
-            replaced_prompt = prompt.replace("{{meeting_summaries}}", item["merged_text"]).replace("{{key_note}}", item["note"].content)
-            merged_summary = call_llm_api(replaced_prompt, None, model, api_key, api_url)
-            return {
-                "start_time": item["note"].start_time,
-                "end_time": item["note"].end_time,
-                "summary": merged_summary
-            }
+            if item["note"] is not None:
+                # LLM summary for merged + marknote content
+                replaced_prompt = prompt.replace("{{meeting_summaries}}", item["merged_text"]).replace("{{key_note}}", item["note"].content)
+                merged_summary = call_llm_api(replaced_prompt, None, model, api_key, api_url)
+                return {
+                    "start_time": item["note"].start_time,
+                    "end_time": item["note"].end_time,
+                    "summary": merged_summary
+                }
+            else:
+                # 非 mark_note 区间，直接返回原文
+                return {
+                    "start_time": None,
+                    "end_time": None,
+                    "summary": item["merged_text"]
+                }
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            marknote_results = list(executor.map(summarize_merged, marknote_merge_inputs))
+            marknote_results = list(executor.map(summarize_merged, merged_list))
         # 5. 汇总所有 marknote_results，要求 LLM 输出中必须包含每个 mark_note 的内容，并在对应内容后加标记
         all_summaries = "\n".join([item["summary"] for item in marknote_results])
         # 构造标记说明
@@ -85,7 +121,6 @@ def mark_note_full_text(request: FullTextRequest):
         for note in request.mark_notes:
             tag = f'[#{{ "type": "mark", "value": {{"start_time":{note.start_time}, "end_time":{note.end_time}, "note_id": "{note.note_id}"}}}}#]'
             mark_tags.append({"content": note.content, "tag": tag})
-        # 构造 LLM prompt，要求每个 mark_note 的内容必须在最终 summary 中出现，并在其后加上唯一标记
         mark_tags_str = "\n".join([f'- {item["content"]} {item["tag"]}' for item in mark_tags])
         final_prompt = FINAL_MARKNOTE_PROMPT.replace("{{section_summaries}}", all_summaries).replace("{{mark_tags}}", mark_tags_str)
         final_summary = call_llm_api(final_prompt, None, model, api_key, api_url)
