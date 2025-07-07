@@ -5,6 +5,7 @@ from enum import Enum
 import requests
 from marknote.config import get_llm_config
 from marknote.database.mysql_client import insert_mark_note_summary
+from marknote.api import call_llm_api
 
 router = APIRouter()
 
@@ -57,45 +58,6 @@ def parse_meeting_content(mark_time: int, time_range: int, content: str) -> str:
     window_end = mark_time + time_range
     window_results = [f"{line['speaker']}: {line['content']}" for line in parsed_lines if line["end"] >= window_start and line["start"] <= window_end]
     return window_start, window_end, "\n".join(window_results)
-
-def call_llm_api(prompt: str, image_url: str, model: str, api_key: str, api_url: str) -> str:
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    # OpenAI API 只支持 content 为字符串或 messages 为字符串数组，不支持 content 为 dict
-    if image_url is not None:
-        # 兼容 OpenAI vision 格式
-        payload = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    ]
-                }
-            ]
-        }
-    else:
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
-        }
-    # 修正：如果 image_url 为空，content 只能是字符串，不能是 list/dict
-    if image_url is None:
-        # content 必须为字符串
-        payload["messages"][0]["content"] = str(prompt)
-    logging.info(f"Payload for LLM API: {payload}")
-    resp = requests.post(api_url, json=payload, headers=headers, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
-    if "choices" in data and data["choices"]:
-        return data["choices"][0]["message"]["content"]
-    return str(data)
 
 def build_prompt(llm_cfg, prompt, meeting_content, language, image_content=None, user_notes=None):
     logging.info(f"image_content: {image_content}, user_notes: {user_notes}")
