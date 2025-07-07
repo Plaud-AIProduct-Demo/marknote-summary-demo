@@ -26,7 +26,7 @@ class MarkNoteSummaryRequest(BaseModel):
     content: str = Field(..., description="转写内容")
     prompt: str = Field(None, description="自定义提示内容, 可选")
     mark_type: MarkType = Field(..., description="标记类型: time, text, image")
-    image_url: str = Field(None, description="图片的地址, 仅image类型需要")
+    image_url: list = Field(None, description="图片的地址列表, 仅image类型需要")
     notes: str = Field(None, description="用户笔记内容, 仅text类型需要")
 
 def parse_meeting_content(mark_time: int, time_range: int, content: str) -> str:
@@ -64,7 +64,7 @@ def build_prompt(llm_cfg, prompt, meeting_content, language, image_content=None,
     if prompt is None:
         prompt = llm_cfg["prompt_template"]
     if image_content is None:
-        image_content = ""
+        image_content = []
     if user_notes is None:
         user_notes = ""
     if "{{meeting_content}}" not in prompt or "{{language}}" not in prompt:
@@ -72,7 +72,7 @@ def build_prompt(llm_cfg, prompt, meeting_content, language, image_content=None,
         raise ValueError("Prompt template must contain {{meeting_content}} and {{language}} placeholders")
     format_prompt = prompt.replace("{{meeting_content}}", meeting_content).replace("{{language}}", language)
     format_prompt = format_prompt.replace("{{user_notes}}", user_notes)
-    # format_prompt = format_prompt.replace("{{image_content}}", image_content)
+    # format_prompt = format_prompt.replace("{{image_content}}", ", ".join(image_content) if image_content else "")
     return format_prompt
 
 @router.post("/mark_note/summary")
@@ -86,9 +86,9 @@ def mark_note_summary(request: MarkNoteSummaryRequest):
         user_notes = None
         image_url = None
         if request.mark_type == MarkType.image:
-            if not request.image_url:
-                logging.error("image type must provide image_url")
-                return {"error": "image type must provide image_url"}
+            if not request.image_url or not isinstance(request.image_url, list):
+                logging.error("image type must provide image_url as a list")
+                return {"error": "image type must provide image_url as a list"}
             image_url = request.image_url
         elif request.mark_type == MarkType.text:
             user_notes = request.notes
@@ -131,7 +131,7 @@ def mark_note_summary(request: MarkNoteSummaryRequest):
                 "content": request.content,
                 "prompt": format_prompt,
                 "mark_type": request.mark_type.value,
-                "image_url": image_url,
+                "image_url": ",".join(image_url) if image_url else None,
                 "user_notes": user_notes,
                 "mark_note": llm_response,
                 "start_time": window_start,
