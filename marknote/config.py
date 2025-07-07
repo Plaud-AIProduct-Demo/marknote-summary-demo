@@ -1,5 +1,5 @@
 import os
-from .prompt_template import MEETING_SUMMARY_PROMPT_V3
+from .prompt_template import MEETING_SUMMARY_PROMPT_V4
 from dotenv import load_dotenv
 
 # 在模块加载时自动加载.env
@@ -25,11 +25,11 @@ def get_llm_config(scenario: str):
             "api_url": api_url,
             "model": model,
             "api_key": api_key,
-            "prompt_template": MEETING_SUMMARY_PROMPT_V3,
+            "prompt_template": MEETING_SUMMARY_PROMPT_V4,
         }
     return {
         "api_url": api_url,
         "model": model,
         "api_key": api_key,
-        "prompt_template": MEETING_SUMMARY_PROMPT_V3,
+        "prompt_template": MEETING_SUMMARY_PROMPT_V4,
     }

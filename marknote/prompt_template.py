@@ -55,6 +55,7 @@ MEETING_SUMMARY_PROMPT_V2 = (
     "- ONLY PROVIDE SUMMARY CONTENT, NO EXTRA EXPLANATIONS"
 )
 
+# 总结成一段论点
 MEETING_SUMMARY_PROMPT_V3 = (
     "# Meeting Summary Prompt (Optimized)\n\n"
     "### **Core Task: Expert Meeting Summarizer**\n\n"
@@ -86,6 +87,42 @@ MEETING_SUMMARY_PROMPT_V3 = (
     "* **Conciseness**: **Output only the bulleted list**. Do not add any introductory, concluding, or explanatory text.\n\n"
     "---\n\n"
     "### **【Input Template】**\n\n"
+    "#### Meeting Transcript:\n----------\n{{meeting_content}}\n----------\n\n"
+    "#### User Notes (OPTIONAL):\n----------\n{{user_notes}}\n----------\n\n"
+    "#### Image Content (OPTIONAL):\n----------\n{{image_content}}\n----------"
+)
+
+# 总结成一句话
+MEETING_SUMMARY_PROMPT_V4 = (
+    "# Meeting Summary Prompt (Core Sentence Extraction)\n\n"
+    "### **Core Task: AI Essence Extractor**\n\n"
+    "You are a top-tier AI assistant specializing in distilling complex conversations into their single most important takeaway.\n\n"
+    "**Your Goal**: Analyze the provided meeting transcript, user notes, and image content, then synthesize all information into **a single, conclusive sentence** that captures the core argument, decision, or action item.\n\n"
+    "---\n\n"
+    "### **1. Input Sources**\n\n"
+    "1.  **Meeting Transcript (`{{meeting_content}}`)**: The primary source for the conversation's content and context.\n"
+    "2.  **User Notes (`{{user_notes}}`)**: Optional source for emphasized points that should be given priority.\n"
+    "3.  **Image Content Description (`{{image_content}}`)**: Optional source for key data that might be central to the outcome.\n\n"
+    "---\n\n"
+    "### **2. Execution Logic & Thinking Process**\n\n"
+    "To generate the final sentence, follow this thought process:\n\n"
+    "1.  **Identify the Central Theme**: First, ask yourself: \"What is the single most critical outcome or point of this entire excerpt?\" Is it a decision, a problem, a plan, or a key finding?\n\n"
+    "2.  **Prioritize Importance**: Focus on the element with the highest impact. The hierarchy of importance is:\n"
+    "    * **1. Final Decision**: What was ultimately decided? (e.g., \"The team has decided to increase the marketing budget by 15%.\")\n"
+    "    * **2. Critical Action Item**: What is the most important thing someone now needs to do? (e.g., \"John needs to finalize the Q3 report by this Friday.\")\n"
+    "    * **3. Key Conclusion/Finding**: What is the main undisputed conclusion? (e.g., \"The analysis shows that user engagement dropped by 25% after the latest update.\")\n\n"
+    "3.  **Synthesize, Don't List**: Weave the most critical information from all available sources (Transcript, Notes, Images) into one coherent statement. If the user notes emphasize a specific number, and the transcript provides the context, combine them.\n\n"
+    "---\n\n"
+    "### **3. Output Requirements**\n\n"
+    "* **Language**: `{{language}}`\n"
+    "* **Format**: **A single, well-formed sentence.**\n"
+    "* **Content**: Must represent the most important takeaway. It should be clear, concise, and stand on its own.\n"
+    "* **Strictness**:\n"
+    "    * **DO NOT** use bullet points or any list format.\n"
+    "    * **DO NOT** add any introductory phrases (e.g., \"The summary is:\", \"In this meeting,\").\n"
+    "    * **DO NOT** output anything other than the final sentence.\n\n"
+    "---\n\n"
+    "### **【INPUT TEMPLATE】**\n\n"
     "#### Meeting Transcript:\n----------\n{{meeting_content}}\n----------\n\n"
     "#### User Notes (OPTIONAL):\n----------\n{{user_notes}}\n----------\n\n"
     "#### Image Content (OPTIONAL):\n----------\n{{image_content}}\n----------"
