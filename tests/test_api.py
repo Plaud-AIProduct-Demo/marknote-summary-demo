@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from marknote.api import router, MarkType
+from marknote.mark_note import router, MarkType
 from main import app
 
 def test_mark_note_summary_time():

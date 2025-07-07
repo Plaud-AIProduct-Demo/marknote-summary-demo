@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from marknote.api import call_llm_api
+from marknote.mark_note import call_llm_api
 from marknote.config import get_llm_config
 from typing import List
 from marknote.prompt_template import SEGMENT_SUMMARY_PROMPT, MERGE_MARKNOTE_PROMPT, FINAL_MARKNOTE_PROMPT
@@ -9,6 +9,7 @@ import concurrent.futures
 import tiktoken
 
 router = APIRouter()
+
 TIKTOKEN_MODEL = "gpt-4o"
 
 class MarkNoteItem(BaseModel):

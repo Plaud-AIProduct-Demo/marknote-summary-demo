@@ -3,7 +3,7 @@ from logging.handlers import TimedRotatingFileHandler
 import os
 from datetime import datetime
 from fastapi import FastAPI
-from marknote.api import router as marknote_router
+from marknote.mark_note import router as marknote_router
 from marknote.full_text import router as full_text_router
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
