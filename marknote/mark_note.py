@@ -92,16 +92,16 @@ def mark_note_summary(request: MarkNoteSummaryRequest):
             image_url = request.image_url
         elif request.mark_type == MarkType.text:
             user_notes = request.notes
-        try:
-            window_start, window_end, meeting_content = parse_meeting_content(request.mark_time, request.time_range, request.content)
-        except Exception as e:
-            logging.error(f"Meeting content parsing failed: {str(e)}")
-            return {"error": f"Meeting content parsing failed: {str(e)}"}
+        # try:
+            # window_start, window_end, meeting_content = parse_meeting_content(request.mark_time, request.time_range, request.content)
+        # except Exception as e:
+        #     logging.error(f"Meeting content parsing failed: {str(e)}")
+        #     return {"error": f"Meeting content parsing failed: {str(e)}"}
         try:
             format_prompt = build_prompt(
                 llm_cfg,
                 request.prompt,
-                meeting_content,
+                request.content,
                 request.language,
                 image_content=image_url,
                 user_notes=user_notes
@@ -134,16 +134,16 @@ def mark_note_summary(request: MarkNoteSummaryRequest):
                 "image_url": ",".join(image_url) if image_url else None,
                 "user_notes": user_notes,
                 "mark_note": llm_response,
-                "start_time": window_start,
-                "end_time": window_end
+                # "start_time": window_start,
+                # "end_time": window_end
             })
         except Exception as e:
             logging.error(f"Failed to insert summary to MySQL: {str(e)}")
         result = {
             "received": request.model_dump(),
             "llm_summary": llm_response,
-            "start_time": window_start,
-            "end_time": window_end,
+            # "start_time": window_start,
+            # "end_time": window_end,
         }
         callback_url = "http://127.0.0.1:8080/mark_note/callback"
         callback_data = {

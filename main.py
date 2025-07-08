@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from marknote.mark_note import router as marknote_router
 from marknote.full_text import router as full_text_router
 from marknote.extension import router as extension_router
+from marknote.images import router as image_router
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -37,6 +38,7 @@ app = FastAPI(
 app.include_router(marknote_router)
 app.include_router(full_text_router)
 app.include_router(extension_router)
+app.include_router(image_router)
 
 @app.get("/")
 def read_root():
